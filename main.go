@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -8,9 +9,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
-	"github.com/russross/blackfriday/v2"
+	"github.com/yuin/goldmark"
 )
 
 const (
@@ -25,16 +27,16 @@ const (
 		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 		<script>hljs.highlightAll();</script>
-		</head>
-		<body>
-			<main class="container">
-				<header>{{ .Menu }}</header>
-				<article>
-					{{ .Content | safeHTML }}
-				</article>
-			</main>
-		</body>
-		</html>
+	</head>
+	<body>
+		<main class="container">
+			<header>{{ .Menu }}</header>
+			<article>
+				{{ .Content | safeHTML }}
+			</article>
+		</main>
+	</body>
+	</html>
 	`
 	defaultMenuTmpl = `
 	<details class="dropdown">
@@ -44,6 +46,8 @@ const (
 	`
 )
 
+var ignorePatterns = parseIgnoreFile(".markdown-server/ignore")
+
 var (
 	htmlTmpl string
 	menuTmpl string
@@ -52,67 +56,70 @@ var (
 func loadTemplate(filePath string, defaultContent string) string {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		log.Printf("Using default template as %s was not found", filePath)
+		log.Printf("using default template as %s was not found", filePath)
 		return defaultContent
 	}
 	return string(content)
 }
 
 func init() {
-	htmlTmpl = loadTemplate(".index.html.template", defaultHtmlTmpl)
-	menuTmpl = loadTemplate(".menu.html.template", defaultMenuTmpl)
+	htmlTmpl = loadTemplate(".markdown-server/index.html", defaultHtmlTmpl)
+	menuTmpl = loadTemplate(".markdown-server/menu.html", defaultMenuTmpl)
 }
 
-// Handler serves .md files as HTML and file system contents in a menu
-func Handler(w http.ResponseWriter, r *http.Request) {
-	// Only handle GET requests
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+func fileHandler(baseDir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
 
-	// Validate and sanitize the requested path
-	requestedPath := filepath.Clean("." + r.URL.Path)
-	if strings.HasPrefix(requestedPath, "..") {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
-		return
-	}
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 
-	// Check if the path is a directory
-	if stat, err := os.Stat(requestedPath); err == nil && stat.IsDir() {
-		renderDirectory(w, requestedPath, r.URL.Path)
-		return
-	}
+		cleanPath := filepath.Clean(r.URL.Path)
+		requestedPath := filepath.Join(baseDir, cleanPath)
 
-	// Check if the path is a markdown file
-	if filepath.Ext(requestedPath) == ".md" {
-		renderMarkdownFile(w, requestedPath, r.URL.Path)
-		return
-	}
+		if !strings.HasPrefix(requestedPath, baseDir) {
+			http.Error(w, fmt.Sprintf("Invalid path %s", requestedPath), http.StatusBadRequest)
+			return
+		}
 
-	// Check if the path is an image file
-	if isImageFile(requestedPath) {
-		http.ServeFile(w, r, requestedPath)
-		return
-	}
+		// Ignore files
+		if matchPatterns(requestedPath, ignorePatterns) {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
 
-	http.Error(w, "Not found", http.StatusNotFound)
+		if r.URL.Path == "/" {
+			renderHomepage(w, requestedPath, r.URL.Path)
+			return
+		}
+
+		if filepath.Ext(requestedPath) == ".md" {
+			renderMarkdownFile(w, baseDir, requestedPath, r.URL.Path)
+			return
+		}
+
+		if isImageFile(requestedPath) {
+			http.ServeFile(w, r, requestedPath)
+			return
+		}
+
+		http.Error(w, "Not found", http.StatusNotFound)
+	}
 }
 
-// isImageFile checks if the file has an image extension
 func isImageFile(filePath string) bool {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	switch ext {
-	case ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg":
+	case ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico", ".webm":
 		return true
 	default:
 		return false
 	}
 }
 
-// renderMarkdownFile renders the given Markdown file as HTML
-func renderMarkdownFile(w http.ResponseWriter, filePath string, urlPath string) {
-	// Read the Markdown file
+func renderMarkdownFile(w http.ResponseWriter, baseDir string, filePath string, urlPath string) {
 	mdContent, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Printf("Error reading file %s: %v", filePath, err)
@@ -120,13 +127,16 @@ func renderMarkdownFile(w http.ResponseWriter, filePath string, urlPath string) 
 		return
 	}
 
-	// Convert Markdown to HTML
-	htmlContent := blackfriday.Run(mdContent)
+	var buf strings.Builder
+	if err := goldmark.Convert(mdContent, &buf); err != nil {
+		log.Printf("Error converting markdown: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
-	// Generate the menu
-	menu := generateMenu(".", urlPath)
+	htmlContent := buf.String()
+	menu := generateMenu(baseDir, urlPath)
 
-	// Use template to inject the HTML content
 	t, err := template.New("markdown").Funcs(template.FuncMap{
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
 	}).Parse(htmlTmpl)
@@ -136,7 +146,6 @@ func renderMarkdownFile(w http.ResponseWriter, filePath string, urlPath string) 
 		return
 	}
 
-	// Render the template
 	data := struct {
 		Title    string
 		FilePath string
@@ -147,7 +156,7 @@ func renderMarkdownFile(w http.ResponseWriter, filePath string, urlPath string) 
 		Title:    filepath.Base(filePath),
 		UrlPath:  urlPath,
 		FilePath: filePath,
-		Content:  string(htmlContent),
+		Content:  htmlContent,
 		Menu:     template.HTML(menu),
 	}
 
@@ -157,30 +166,9 @@ func renderMarkdownFile(w http.ResponseWriter, filePath string, urlPath string) 
 	}
 }
 
-// renderDirectory renders a list of Markdown files and directories in the given directory
-func renderDirectory(w http.ResponseWriter, dirPath string, urlPath string) {
-	files, err := os.ReadDir(dirPath)
-	if err != nil {
-		log.Printf("Error reading directory %s: %v", dirPath, err)
-		http.Error(w, "Unable to read directory", http.StatusInternalServerError)
-		return
-	}
+func renderHomepage(w http.ResponseWriter, dirPath string, urlPath string) {
+	menu := generateMenu(dirPath, urlPath)
 
-	// Create a list of links to .md files and directories
-	var mdFiles []string
-	var directories []string
-	for _, file := range files {
-		if file.IsDir() {
-			directories = append(directories, file.Name())
-		} else if filepath.Ext(file.Name()) == ".md" {
-			mdFiles = append(mdFiles, file.Name())
-		}
-	}
-
-	// Generate the menu
-	menu := generateMenu(".", urlPath)
-
-	// Use template to render the directory listing
 	t, err := template.New("directory").Funcs(template.FuncMap{
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
 	}).Parse(htmlTmpl)
@@ -197,9 +185,9 @@ func renderDirectory(w http.ResponseWriter, dirPath string, urlPath string) {
 		Content  string
 		Menu     template.HTML
 	}{
-		Title:    "",
+		Title:    "Home",
 		FilePath: "",
-		UrlPath:  "",
+		UrlPath:  urlPath,
 		Content:  "Hello 👋",
 		Menu:     template.HTML(menu),
 	}
@@ -210,15 +198,39 @@ func renderDirectory(w http.ResponseWriter, dirPath string, urlPath string) {
 	}
 }
 
-// Custom glob function to filter files
-func glob(root string, fn func(string) bool) []string {
+func parseIgnoreFile(filename string) []*regexp.Regexp {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		log.Printf("Error reading ignore file: %v", err)
+		return nil
+	}
+	lines := strings.Split(string(data), "\n")
+	var patterns []*regexp.Regexp
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			pattern, err := regexp.Compile(line)
+			if err != nil {
+				log.Printf("Error compiling regex for pattern %s: %v", line, err)
+				continue
+			}
+			patterns = append(patterns, pattern)
+		}
+	}
+	return patterns
+}
+
+func glob(root string, patterns []*regexp.Regexp) []string {
 	var files []string
-	err := filepath.WalkDir(root, func(s string, d fs.DirEntry, e error) error {
+	err := filepath.WalkDir(root, func(filePath string, d fs.DirEntry, e error) error {
 		if e != nil {
 			return e
 		}
-		if fn(s) {
-			files = append(files, s)
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Ext(filePath) == ".md" && !matchPatterns(filePath, patterns) {
+			files = append(files, filePath)
 		}
 		return nil
 	})
@@ -228,17 +240,28 @@ func glob(root string, fn func(string) bool) []string {
 	return files
 }
 
-// generateMenu generates an HTML nested list of files and directories using a markdown template
-func generateMenu(root string, urlPath string) string {
-	// Define the filter function to include only .md files
-	mdFilter := func(path string) bool {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() && filepath.Ext(path) == ".md" {
-			return true
-		}
+// matchPatterns checks if the given path matches any of the provided regex patterns
+func matchPatterns(path string, patterns []*regexp.Regexp) bool {
+	relPath, err := filepath.Rel("/", path)
+	if err != nil {
+		log.Printf("Error getting relative path: %v", err)
 		return false
 	}
 
-	files := glob(root, mdFilter)
+	for _, pattern := range patterns {
+		if pattern.MatchString(relPath) {
+			return true
+		}
+	}
+	return false
+}
+
+func ignorePath(filePath string, patterns []*regexp.Regexp) bool {
+	return matchPatterns(filePath, patterns)
+}
+
+func generateMenu(root string, urlPath string) string {
+	files := glob(root, ignorePatterns)
 
 	var sb strings.Builder
 	sb.WriteString("<ul>")
@@ -276,11 +299,19 @@ func generateMenu(root string, urlPath string) string {
 }
 
 func main() {
-	// Serve static files and handle Markdown requests
-	http.HandleFunc("/", Handler)
+	host := flag.String("host", "localhost", "Host to listen on")
+	port := flag.Int("port", 8080, "Port to listen on")
+	baseDir := flag.String("dir", ".", "Base directory to serve files from")
+	flag.Parse()
 
-	// Start the server
-	port := 8080
-	log.Printf("Serving on http://localhost:%d\n", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	absBaseDir, err := filepath.Abs(*baseDir)
+	if err != nil {
+		log.Fatalf("Failed to get absolute path for base directory: %v", err)
+	}
+
+	http.HandleFunc("/", fileHandler(absBaseDir))
+
+	address := fmt.Sprintf("%s:%d", *host, *port)
+	log.Printf("Serving %s on http://%s\n", absBaseDir, address)
+	log.Fatal(http.ListenAndServe(address, nil))
 }

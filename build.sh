@@ -1,8 +1,12 @@
 #!/bin/bash
 
+set -e
+
 APP_NAME="markdown-server"
 OUTPUT_DIR="./bin"
 PLATFORMS=("darwin/arm64" "linux/arm64" "darwin/amd64" "linux/amd64" "windows/amd64")
+
+go test
 
 # Create the output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
