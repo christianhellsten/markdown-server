@@ -32,7 +32,7 @@ class MarkdownServer < Formula
   end
 
   test do
-    bin_name = OS.windows? ? "markdown-server.exe" : "markdown-server"
+    bin_name = OS.mac? || OS.linux? ? "markdown-server" : "markdown-server.exe"
     system "#{bin}/#{bin_name}", "--version"
   end
 end
