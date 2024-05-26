@@ -16,6 +16,17 @@ basic styling.
 
 ## Installation
 
+Binaries for MacOS, Windows, and Linux can be found on Github:
+https://github.com/christianhellsten/markdown-server/releases
+
+You can also use brew to install the binaries from Github:
+
+```bash
+brew tap christianhellsten/markdown-server https://github.com/christianhellsten/markdown-server.git
+```
+
+## Contributing
+
 Clone the repository:
 
 ```sh
