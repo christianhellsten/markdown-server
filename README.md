@@ -16,13 +16,35 @@ basic styling.
 
 ## Installation
 
+Binaries for MacOS, Windows, and Linux can be found on Github:
+https://github.com/christianhellsten/markdown-server/releases
+
+## Installation with Homebrew
+
+You can also use brew to install the binaries from Github with Homebrew:
+
+```bash
+brew tap christianhellsten/markdown-server https://github.com/christianhellsten/markdown-server.git
+brew install christianhellsten/markdown-server/markdown-server
+```
+
+To uninstall, use:
+
+```bash
+brew uninstall christianhellsten/markdown-server/markdown-server
+brew untap christianhellsten/markdown-server
+```
+
+## Contributing
+
 Clone the repository:
 
 ```sh
 git clone https://github.com/christianhellsten/markdown-server.git
 cd markdown-server
 ./run.sh
-# or use go run main.go
+# or, use ./watch.sh
+# or, use go run main.go
 ```
 
 ## Screenshot
