@@ -41,7 +41,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./bin/markdown-server-darwin-amd64
-        asset_name: markdown-server-macos-amd64
+        asset_name: markdown-server-darwin-amd64
         asset_content_type: application/zip
 
     - name: Upload Release Assets
