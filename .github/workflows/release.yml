@@ -42,7 +42,7 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./bin/markdown-server-darwin-amd64
         asset_name: markdown-server-darwin-amd64
-        asset_content_type: application/zip
+        asset_content_type: application/octet-stream
 
     - name: Upload Release Assets
       uses: actions/upload-release-asset@v1
@@ -52,7 +52,7 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./bin/markdown-server-linux-amd64
         asset_name: markdown-server-linux-amd64
-        asset_content_type: application/zip
+        asset_content_type: application/octet-stream
 
     - name: Upload Release Assets
       uses: actions/upload-release-asset@v1
@@ -62,5 +62,24 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./bin/markdown-server-windows-amd64.exe
         asset_name: markdown-server-windows-amd64.exe
-        asset_content_type: application/zip
+        asset_content_type: application/octet-stream
 
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./bin/markdown-server-darwin-arm64
+        asset_name: markdown-server-darwin-arm64
+        asset_content_type: application/octet-stream
+
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./bin/markdown-server-linux-arm64
+        asset_name: markdown-server-linux-arm64
+        asset_content_type: application/octet-stream
