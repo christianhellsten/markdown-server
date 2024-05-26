@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -209,39 +210,52 @@ func renderDirectory(w http.ResponseWriter, dirPath string, urlPath string) {
 	}
 }
 
+// Custom glob function to filter files
+func glob(root string, fn func(string) bool) []string {
+	var files []string
+	err := filepath.WalkDir(root, func(s string, d fs.DirEntry, e error) error {
+		if e != nil {
+			return e
+		}
+		if fn(s) {
+			files = append(files, s)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("Error walking the path %s: %v", root, err)
+	}
+	return files
+}
+
 // generateMenu generates an HTML nested list of files and directories using a markdown template
 func generateMenu(root string, urlPath string) string {
-	var generate func(path string) string
-	generate = func(path string) string {
-		files, err := os.ReadDir(path)
-		if err != nil {
-			log.Printf("Error reading directory %s: %v", path, err)
-			return ""
+	// Define the filter function to include only .md files
+	mdFilter := func(path string) bool {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() && filepath.Ext(path) == ".md" {
+			return true
 		}
-		var sb strings.Builder
-		sb.WriteString("<ul>")
-		for _, file := range files {
-			if file.IsDir() {
-				if file.Name() != ".git" {
-					sb.WriteString(fmt.Sprintf("<li class=\"directory\">📂 %s%s</li>", file.Name(), generate(filepath.Join(path, file.Name()))))
-				}
-			} else if filepath.Ext(file.Name()) == ".md" {
-				relPath, _ := filepath.Rel(root, filepath.Join(path, file.Name()))
-				sb.WriteString(fmt.Sprintf("<li class=\"file\"><a href=\"/%s\">📄 %s</a></li>", relPath, file.Name()))
-			}
-		}
-		sb.WriteString("</ul>")
-		return sb.String()
+		return false
 	}
 
-	menuContent := generate(root)
+	files := glob(root, mdFilter)
+
+	var sb strings.Builder
+	sb.WriteString("<ul>")
+
+	for _, file := range files {
+		relPath, _ := filepath.Rel(root, file)
+		sb.WriteString(fmt.Sprintf("<li class=\"file\"><a href=\"/%s\">📄 %s</a></li>", relPath, relPath))
+	}
+
+	sb.WriteString("</ul>")
 
 	mdMenu := struct {
 		UrlPath string
 		Menu    string
 	}{
 		UrlPath: urlPath,
-		Menu:    menuContent,
+		Menu:    sb.String(),
 	}
 
 	tmpl, err := template.New("menu").Funcs(template.FuncMap{

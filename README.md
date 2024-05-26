@@ -1,4 +1,4 @@
-# Markdown Server
+# Markdown Server: browse and render Markdown files
 
 Markdown Server is a simple web server written in Go that serves `.md` files as HTML and
 lists Markdown files and directories in a navigable menu. It uses the
@@ -13,11 +13,6 @@ basic styling.
 - Syntax highlighting for code blocks using `highlight.js`
 - Custom HTML templates
 - Image handling
-
-## Installation
-
-Binaries for MacOS, Windows, and Linux can be found on Github:
-https://github.com/christianhellsten/markdown-server/releases
 
 ## Installation with Homebrew
 
@@ -34,6 +29,11 @@ To uninstall, use:
 brew uninstall christianhellsten/markdown-server/markdown-server
 brew untap christianhellsten/markdown-server
 ```
+
+## Manual Installation
+
+Binaries for MacOS, Windows, and Linux can be found on Github:
+https://github.com/christianhellsten/markdown-server/releases
 
 ## Contributing
 
