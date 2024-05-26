@@ -1,16 +1,38 @@
 class MarkdownServer < Formula
   desc "Markdown server software"
   homepage "https://github.com/christianhellsten/markdown-server"
-  url "https://github.com/christianhellsten/markdown-server/releases/latest/download/markdown-server-darwin-amd64"
   version "latest"
-  sha256 "f709326b75ebc9a96b9a767c517323dcb056a5e53646ef5f59814ef2bc64d10a"
-  # TODO: sha256 :no_check
+  url begin
+    os = if OS.mac?
+           "darwin"
+         elsif OS.linux?
+           "linux"
+         else
+           "windows"
+         end
+
+    arch = if Hardware::CPU.intel?
+             "amd64"
+           elsif Hardware::CPU.arm?
+             "arm64"
+           end
+
+    ext = OS.mac? || OS.linux? ? "" : ".exe"
+    "https://github.com/christianhellsten/markdown-server/releases/latest/download/markdown-server-#{os}-#{arch}#{ext}"
+  end
+
+  resource "markdown-server" do
+  end
 
   def install
-    bin.install "markdown-server-darwin-amd64" => "markdown-server"
+    bin_name = OS.windows? ? "markdown-server.exe" : "markdown-server"
+    resource("markdown-server").stage do
+      bin.install Dir["markdown-server-*"].first => bin_name
+    end
   end
 
   test do
-    system "#{bin}/markdown-server", "--version"
+    bin_name = OS.windows? ? "markdown-server.exe" : "markdown-server"
+    system "#{bin}/#{bin_name}", "--version"
   end
 end
